@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { parseJson } from '$lib/utils/json-parser';
   import { generateTree } from '$lib/utils/tree-generator';
-  import { jsonToXml, jsonToCsv, jsonToYaml } from '$lib/utils/formatters';
   import type { ParseResult, TreeNode } from '$lib/types';
   
   // Toast 타입 정의
@@ -24,6 +23,10 @@
   let textareaElement: HTMLTextAreaElement;
   let lineNumbersElement: HTMLDivElement;
   let actualLineHeight = 21; // default value
+  
+  // 문자 변환 상태 관리
+  let replaceFrom = $state('');
+  let replaceTo = $state('');
   
   // 트리 노드 확장 상태 관리
   let expandedNodes = $state(new Set<string>());
@@ -275,6 +278,32 @@
     });
   }
   
+  function replaceCharacter() {
+    if (!replaceFrom.trim()) {
+      showToast('바꿀 문자를 입력해주세요.', 'warning');
+      return;
+    }
+    
+    if (!jsonText.includes(replaceFrom)) {
+      showToast(`바꿀 문자 "${replaceFrom}"가 JSON 입력 문자열에 없습니다.`, 'error');
+      return;
+    }
+    
+    jsonText = jsonText.replaceAll(replaceFrom, replaceTo);
+    
+    if (replaceTo.trim() === '') {
+      showToast(`"${replaceFrom}"를 삭제했습니다.`, 'success');
+    } else {
+      showToast(`"${replaceFrom}"를 "${replaceTo}"로 변환했습니다.`, 'success');
+    }
+  }
+  
+  function clearReplaceFields() {
+    replaceFrom = '';
+    replaceTo = '';
+    showToast('문자 변환 입력값이 초기화되었습니다.', 'info');
+  }
+  
   // Toast 함수들
   function showToast(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', duration: number = 3000) {
     const toast: Toast = {
@@ -461,14 +490,52 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 main-content-grid">
         <!-- JSON 입력 영역 -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col json-input-card">
-          <div class="flex items-center justify-between p-3 border-b border-gray-200 flex-shrink-0">
-            <h2 class="text-lg font-semibold text-gray-900 ml-1">JSON 입력</h2>
-            <div class="flex items-center space-x-2 text-sm text-gray-500 h-8">
-              <span>{stats.characters}자</span>
-              <span>•</span>
-              <span>{stats.lines}줄</span>
-              <span>•</span>
-              <span>{Math.round(stats.size / 1024)}KB</span>
+          <div class="p-3 border-b border-gray-200 flex-shrink-0">
+            <!-- JSON 입력 타이틀과 상태 정보 -->
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-lg font-semibold text-gray-900 ml-1">JSON 입력</h2>
+              <div class="flex items-center space-x-2 text-sm text-gray-500 h-8">
+                <span>{stats.characters}자</span>
+                <span>•</span>
+                <span>{stats.lines}줄</span>
+                <span>•</span>
+                <span>{Math.round(stats.size / 1024)}KB</span>
+              </div>
+            </div>
+            
+            <!-- 문자 변환 기능 -->
+            <div class="bg-blue-50 p-2 rounded-lg border border-blue-200">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-blue-800">문자 변환</span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  bind:value={replaceFrom}
+                  placeholder="바꿀 문자"
+                  class="flex-1 min-w-24 px-2 py-1 text-sm border border-blue-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <span class="text-blue-600 text-sm">→</span>
+                <input
+                  type="text"
+                  bind:value={replaceTo}
+                  placeholder="바뀔 문자"
+                  class="flex-1 min-w-24 px-2 py-1 text-sm border border-blue-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <button
+                  on:click={replaceCharacter}
+                  class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
+                >
+                  전환
+                </button>
+                <button
+                  on:click={clearReplaceFields}
+                  class="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors whitespace-nowrap"
+                  title="입력값 초기화"
+                >
+                  초기화
+                </button>
+              </div>
             </div>
           </div>
           
@@ -2057,5 +2124,81 @@
 
   :global([data-theme="dark"]) .pjp-logo-container span {
     color: #9ca3af;
+  }
+
+  /* Character Replacement Feature Styles */
+  .bg-blue-50 {
+    background-color: #eff6ff;
+  }
+
+  .border-blue-200 {
+    border-color: #bfdbfe;
+  }
+
+  .text-blue-800 {
+    color: #1e40af;
+  }
+
+  .text-blue-600 {
+    color: #2563eb;
+  }
+
+  .border-blue-300 {
+    border-color: #93c5fd;
+  }
+
+  /* Dark mode for character replacement */
+  :global([data-theme="dark"]) .bg-blue-50 {
+    background-color: #1e3a8a;
+  }
+
+  :global([data-theme="dark"]) .border-blue-200 {
+    border-color: #3b82f6;
+  }
+
+  :global([data-theme="dark"]) .text-blue-800 {
+    color: #93c5fd;
+  }
+
+  :global([data-theme="dark"]) .text-blue-600 {
+    color: #60a5fa;
+  }
+
+  :global([data-theme="dark"]) .border-blue-300 {
+    border-color: #2563eb;
+  }
+
+  /* Dark mode input styling for character replacement */
+  :global([data-theme="dark"]) input[type="text"] {
+    background-color: #374151;
+    border-color: #4b5563;
+    color: #f3f4f6;
+  }
+
+  :global([data-theme="dark"]) input[type="text"]:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+  }
+
+  :global([data-theme="dark"]) input[type="text"]::placeholder {
+    color: #9ca3af;
+  }
+
+  /* Button styling for character replacement */
+  .bg-gray-500 {
+    background-color: #6b7280;
+  }
+
+  .bg-gray-500:hover {
+    background-color: #4b5563;
+  }
+
+  /* Dark mode button styling */
+  :global([data-theme="dark"]) .bg-gray-500 {
+    background-color: #4b5563;
+  }
+
+  :global([data-theme="dark"]) .bg-gray-500:hover {
+    background-color: #6b7280;
   }
 </style>
