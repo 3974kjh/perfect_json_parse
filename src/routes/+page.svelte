@@ -159,40 +159,87 @@
     }
   }
 
-  // 오류 위치로 스크롤하는 함수
+  // 오류 위치로 스크롤하는 함수 (스마트한 위치 계산)
   function scrollToError(error: any) {
-    if (!textareaElement || !error.line || !error.column) return;
+    if (!textareaElement || !error.column) return;
     
-    const lines = jsonText.split('\n');
+    const actualLines = jsonText.split('\n');
+    const hasMultipleLines = actualLines.length > 1;
+    const hasShortLines = actualLines.every(line => line.length < 120);
+    const shouldUseLineInfo = hasMultipleLines && hasShortLines && error.line;
+    
     let charPosition = 0;
+    let selectionLength = 0;
     
-    // 해당 라인까지의 문자 수 계산
-    for (let i = 0; i < error.line - 1; i++) {
-      charPosition += lines[i].length + 1; // +1 for newline
+    if (shouldUseLineInfo) {
+      // 라인 정보가 정확한 경우: 기존 방식 사용
+      for (let i = 0; i < error.line - 1; i++) {
+        charPosition += actualLines[i].length + 1; // +1 for newline
+      }
+      charPosition += error.column - 1;
+      
+      // 에러 토큰의 길이를 추정하여 더 정확하게 선택
+      const remainingText = jsonText.slice(charPosition);
+      const tokenMatch = remainingText.match(/^[^\s,}\]"]+/); // 토큰 끝까지 선택
+      selectionLength = tokenMatch ? Math.min(tokenMatch[0].length, 15) : 5;
+      
+      // 텍스트 에리어 포커스 및 커서 이동
+      textareaElement.focus();
+      textareaElement.setSelectionRange(charPosition, charPosition + selectionLength);
+      
+      // 정확한 줄 높이로 스크롤 계산
+      const targetScrollTop = (error.line - 1) * actualLineHeight;
+      const maxScroll = textareaElement.scrollHeight - textareaElement.clientHeight;
+      textareaElement.scrollTop = Math.min(targetScrollTop, maxScroll);
+      
+      // 라인 번호도 동기화
+      syncScroll();
+    } else {
+      // 라인 정보가 부정확할 수 있는 경우: 문자 위치만 사용
+      charPosition = Math.max(0, error.column - 1);
+      
+      // 에러 토큰의 길이를 추정하여 더 정확하게 선택
+      const remainingText = jsonText.slice(charPosition);
+      const tokenMatch = remainingText.match(/^[^\s,}\]"]+/); // 토큰 끝까지 선택
+      selectionLength = tokenMatch ? Math.min(tokenMatch[0].length, 20) : 10;
+      
+      // 텍스트 에리어 포커스 및 커서 이동
+      textareaElement.focus();
+      textareaElement.setSelectionRange(charPosition, charPosition + selectionLength);
+      
+      // 대략적인 스크롤 위치 계산 (문자 위치 기반)
+      const roughLineEstimate = Math.floor(charPosition / 80); // 평균 80문자/줄로 추정
+      const targetScrollTop = roughLineEstimate * actualLineHeight;
+      const maxScroll = textareaElement.scrollHeight - textareaElement.clientHeight;
+      textareaElement.scrollTop = Math.min(targetScrollTop, maxScroll);
     }
-    charPosition += error.column - 1;
     
-    // 텍스트 에리어 포커스 및 커서 이동
-    textareaElement.focus();
-    textareaElement.setSelectionRange(charPosition, charPosition + 1);
+    // 에러 하이라이트 클래스 추가
+    textareaElement.classList.add('error-highlight-active');
     
-    // 정확한 줄 높이로 스크롤 계산
-    const targetScrollTop = (error.line - 1) * actualLineHeight;
-    const maxScroll = textareaElement.scrollHeight - textareaElement.clientHeight;
-    
-    textareaElement.scrollTop = Math.min(targetScrollTop, maxScroll);
-    
-    // 라인 번호도 동기화
-    syncScroll();
+    // 3초 후 하이라이트 클래스 제거
+    setTimeout(() => {
+      textareaElement.classList.remove('error-highlight-active');
+    }, 3000);
   }
 
-  // 오류 라인 하이라이트를 위한 CSS 적용
+  // 오류 라인 하이라이트를 위한 CSS 적용 (스마트한 라인 감지)
   function highlightErrorLine() {
     if (!textareaElement || parseResult.errors.length === 0) return;
     
-    // 배경 하이라이트는 CSS로 처리하고, 여기서는 라인 정보만 전달
-    const errorLines = parseResult.errors.map(error => error.line).filter(Boolean);
-    textareaElement.setAttribute('data-error-lines', errorLines.join(','));
+    // JSON 텍스트의 실제 줄바꿈 확인
+    const actualLines = jsonText.split('\n');
+    const hasMultipleLines = actualLines.length > 1;
+    const hasShortLines = actualLines.every(line => line.length < 120); // 대부분의 라인이 적당한 길이인지 확인
+    
+    // 라인 표시가 의미있는 경우에만 에러 라인 하이라이트
+    if (hasMultipleLines && hasShortLines) {
+      const errorLines = parseResult.errors.map(error => error.line).filter(Boolean);
+      textareaElement.setAttribute('data-error-lines', errorLines.join(','));
+    } else {
+      // 라인 표시가 부정확할 수 있는 경우 제거
+      textareaElement.removeAttribute('data-error-lines');
+    }
   }
 
   // 텍스트 변경 시 하이라이트 업데이트
@@ -540,7 +587,9 @@
           </div>
           
           <div class="flex-1 p-2 min-h-0 json-input-content">
-            <div class="json-editor-container h-full">
+            <div class="json-editor-container h-full"
+                 class:has-line-numbers={jsonText && jsonText.split('\n').length > 1 && jsonText.split('\n').every(line => line.length < 120)}
+                 class:no-line-numbers={!jsonText || jsonText.split('\n').length <= 1 || !jsonText.split('\n').every(line => line.length < 120)}>
               <textarea
                 bind:this={textareaElement}
                 bind:value={jsonText}
@@ -553,15 +602,20 @@
                 spellcheck="false"
               ></textarea>
               
-              <!-- 라인 번호 표시 개선 -->
+              <!-- 라인 번호 표시 개선 (스마트한 라인 감지) -->
               {#if jsonText}
-                <div class="line-numbers" bind:this={lineNumbersElement}>
-                  {#each Array(stats.lines) as _, i}
-                    <div class="line-number" class:error-line={parseResult.errors.some(e => e.line === i + 1)}>
-                      {i + 1}
-                    </div>
-                  {/each}
-                </div>
+                {#if jsonText.split('\n').length > 1 && jsonText.split('\n').every(line => line.length < 120)}
+                  <div class="line-numbers" bind:this={lineNumbersElement}>
+                    {#each Array(stats.lines) as _, i}
+                      <div class="line-number" class:error-line={parseResult.errors.some(e => e.line === i + 1)}>
+                        {i + 1}
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <!-- 라인 번호가 부정확할 수 있는 경우 숨김 -->
+                  <div class="line-numbers-placeholder" bind:this={lineNumbersElement}></div>
+                {/if}
               {/if}
             </div>
           </div>
@@ -622,19 +676,34 @@
                         오류 #{index + 1}: {error.message}
                       </h4>
                       {#if error.line && error.column}
+                        {@const actualLines = jsonText.split('\n')}
+                        {@const hasMultipleLines = actualLines.length > 1}
+                        {@const hasShortLines = actualLines.every(line => line.length < 120)}
+                        {@const shouldShowLineInfo = hasMultipleLines && hasShortLines}
+                        
                         <p class="text-sm text-red-600 mb-2">
-                          📍 위치: 라인 {error.line}, 컬럼 {error.column}
+                          {#if shouldShowLineInfo}
+                            📍 위치: 라인 {error.line}, 컬럼 {error.column}
+                          {:else}
+                            📍 위치: {error.column}번째 문자 근처
+                          {/if}
                         </p>
                       {/if}
                     </div>
                     
                     <div class="flex gap-2 flex-shrink-0">
-                      {#if error.line && error.column}
+                      {#if error.column}
+                        {@const actualLines = jsonText.split('\n')}
+                        {@const hasMultipleLines = actualLines.length > 1}
+                        {@const hasShortLines = actualLines.every(line => line.length < 120)}
+                        {@const shouldShowLineInfo = hasMultipleLines && hasShortLines && error.line}
+                        
                         <button 
                           class="action-button primary text-xs px-2 py-1"
                           on:click={() => scrollToError(error)}
+                          title={shouldShowLineInfo ? '정확한 라인 위치로 이동' : '대략적인 문자 위치로 이동'}
                         >
-                          📍 이동
+                          📍 {shouldShowLineInfo ? '이동' : '찾기'}
                         </button>
                       {/if}
                     </div>
@@ -763,11 +832,22 @@
                   {/if}
                   
                   <!-- 문맥 정보 - 간소화 -->
-                  {#if error.line && jsonText.split('\n')[error.line - 1]}
+                  {#if error.column}
+                    {@const actualLines = jsonText.split('\n')}
+                    {@const hasMultipleLines = actualLines.length > 1}
+                    {@const hasShortLines = actualLines.every(line => line.length < 120)}
+                    {@const shouldShowLineContext = hasMultipleLines && hasShortLines && error.line && actualLines[error.line - 1]}
+                    
                     <div class="p-3 bg-gray-50 border border-gray-200 rounded">
-                      <h5 class="text-sm font-medium text-gray-800 mb-2">📄 오류 라인</h5>
+                      <h5 class="text-sm font-medium text-gray-800 mb-2">
+                        {shouldShowLineContext ? '📄 오류 라인' : '📄 오류 위치 주변'}
+                      </h5>
                       <div class="error-line-display">
-                        {jsonText.split('\n')[error.line - 1] || '(빈 라인)'}
+                        {#if shouldShowLineContext && error.line}
+                          {actualLines[error.line - 1] || '(빈 라인)'}
+                        {:else}
+                          {jsonText.slice(Math.max(0, error.column - 50), error.column + 50)}
+                        {/if}
                       </div>
                       
                       <!-- 간단한 수정 방법 -->
@@ -1211,7 +1291,6 @@
 
   /* Textarea with line numbers */
   .json-editor-container textarea {
-    padding-left: 60px !important; /* space for line numbers */
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 0.875rem;
     line-height: 1.5;
@@ -1227,6 +1306,21 @@
     /* 높이 100%로 설정하여 부모 컨테이너에 맞춤 */
     height: 100%;
     min-height: 0;
+  }
+
+  /* 라인 번호가 표시되는 경우 */
+  .json-editor-container.has-line-numbers textarea {
+    padding-left: 60px !important; /* space for line numbers */
+  }
+
+  /* 라인 번호가 숨겨진 경우 */
+  .json-editor-container.no-line-numbers textarea {
+    padding-left: 0.75rem !important; /* normal padding */
+  }
+
+  /* Line numbers placeholder - 숨겨진 라인 번호 영역 */
+  .line-numbers-placeholder {
+    display: none;
   }
 
   /* Dark mode line numbers */
@@ -2200,5 +2294,51 @@
 
   :global([data-theme="dark"]) .bg-gray-500:hover {
     background-color: #6b7280;
+  }
+
+  /* Enhanced selection and error highlighting */
+  .json-editor-container textarea::selection {
+    background-color: #fef3c7;
+    color: #92400e;
+  }
+
+  .json-editor-container textarea.error-highlight-active::selection {
+    background-color: #dc2626;
+    color: white;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+  }
+
+  /* 에러 하이라이트가 활성화된 상태에서 텍스트 영역 스타일 */
+  .json-editor-container textarea.error-highlight-active {
+    animation: errorPulse 0.5s ease-in-out;
+    box-shadow: 0 0 0 2px #dc2626, 0 0 0 4px rgba(220, 38, 38, 0.2);
+  }
+
+  @keyframes errorPulse {
+    0% {
+      box-shadow: 0 0 0 2px #dc2626, 0 0 0 4px rgba(220, 38, 38, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 0 4px #dc2626, 0 0 0 8px rgba(220, 38, 38, 0.4);
+    }
+    100% {
+      box-shadow: 0 0 0 2px #dc2626, 0 0 0 4px rgba(220, 38, 38, 0.2);
+    }
+  }
+
+  /* Dark mode selection and error highlighting */
+  :global([data-theme="dark"]) .json-editor-container textarea::selection {
+    background-color: #451a03;
+    color: #fde68a;
+  }
+
+  :global([data-theme="dark"]) .json-editor-container textarea.error-highlight-active::selection {
+    background-color: #dc2626;
+    color: white;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  }
+
+  :global([data-theme="dark"]) .json-editor-container textarea.error-highlight-active {
+    box-shadow: 0 0 0 2px #ef4444, 0 0 0 4px rgba(239, 68, 68, 0.3);
   }
 </style>
