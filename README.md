@@ -2,7 +2,8 @@
 
 > JSON 파싱 오류를 정확하게 찾아주고 계층적 구조로 시각화해주는 현대적인 JSON 도구
 
-![JSON Parse Screenshot](https://via.placeholder.com/800x400/3B82F6/FFFFFF?text=Perfect+JSON+Parse)
+### 🌐 접속 정보
+- **Frontend**: https://perpect-json-parse.pages.dev/
 
 ## 🚀 핵심 기능
 
