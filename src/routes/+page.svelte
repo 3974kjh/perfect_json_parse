@@ -34,6 +34,9 @@
   // Toast 상태 관리
   let toasts = $state<Toast[]>([]);
   let toastId = 0;
+  
+  // 복사 상태 관리
+  let isCopying = $state(false);
 
   // 반응형 업데이트
   $effect(() => {
@@ -317,12 +320,91 @@
     URL.revokeObjectURL(url);
   }
   
-  function copyToClipboard() {
-    navigator.clipboard.writeText(jsonText).then(() => {
-      showToast('클립보드에 복사되었습니다!', 'success');
-    }).catch(() => {
-      showToast('클립보드 복사에 실패했습니다.', 'error');
-    });
+  async function copyToClipboard() {
+    if (isCopying) return; // 중복 호출 방지
+    
+    isCopying = true;
+    
+    try {
+      // textarea의 실제 값을 가져와서 상태와 동기화
+      const actualValue = textareaElement?.value || jsonText;
+      
+      // 상태 동기화
+      if (textareaElement && textareaElement.value !== jsonText) {
+        jsonText = textareaElement.value;
+      }
+      
+      // 복사할 내용 검증
+      if (!actualValue.trim()) {
+        showToast('복사할 내용이 없습니다.', 'warning');
+        return;
+      }
+      
+      // 복사 과정 시각적 피드백
+      if (textareaElement) {
+        // 전체 텍스트 선택으로 복사되는 내용 표시
+        textareaElement.select();
+        textareaElement.classList.add('copy-highlight');
+        
+        // 0.2초 후 하이라이트 제거
+        setTimeout(() => {
+          textareaElement.classList.remove('copy-highlight');
+          // 선택 해제
+          if (textareaElement) {
+            textareaElement.setSelectionRange(textareaElement.value.length, textareaElement.value.length);
+          }
+        }, 200);
+      }
+      
+      // 실제 값을 복사
+      await navigator.clipboard.writeText(actualValue);
+      
+      const length = actualValue.length;
+      const lines = actualValue.split('\n').length;
+      showToast(`${length}자 (${lines}줄)의 JSON이 복사되었습니다!`, 'success');
+      
+    } catch (error) {
+      // Fallback: 구형 브라우저 대응
+      try {
+        const actualValue = textareaElement?.value || jsonText;
+        fallbackCopyToClipboard(actualValue);
+      } catch (fallbackError) {
+        console.error('복사 실패:', fallbackError);
+        showToast('클립보드 복사에 실패했습니다.', 'error');
+      }
+    } finally {
+      // 최소 200ms 후 버튼 상태 복원 (시각적 피드백과 동기화)
+      setTimeout(() => {
+        isCopying = false;
+      }, 200);
+    }
+  }
+  
+  // Fallback 복사 함수 (구형 브라우저 지원)
+  function fallbackCopyToClipboard(text: string) {
+    try {
+      // 임시 텍스트 영역 생성
+      const tempTextarea = document.createElement('textarea');
+      tempTextarea.value = text;
+      tempTextarea.style.position = 'fixed';
+      tempTextarea.style.left = '-999999px';
+      tempTextarea.style.top = '-999999px';
+      document.body.appendChild(tempTextarea);
+      
+      // 텍스트 선택 및 복사
+      tempTextarea.focus();
+      tempTextarea.select();
+      document.execCommand('copy');
+      
+      // 임시 요소 제거
+      document.body.removeChild(tempTextarea);
+      
+      const length = text.length;
+      showToast(`${length}자의 JSON이 클립보드에 복사되었습니다!`, 'success');
+    } catch (error) {
+      console.error('복사 실패:', error);
+      showToast('클립보드 복사에 실패했습니다. 텍스트를 직접 선택해서 복사해주세요.', 'error');
+    }
   }
   
   function replaceCharacter() {
@@ -514,11 +596,13 @@
           <div class="flex items-center gap-2">
             <button 
               class="toolbar-button info"
+              class:copying={isCopying}
               on:click={copyToClipboard}
-              title="클립보드에 복사"
+              disabled={isCopying}
+              title={isCopying ? "복사 중..." : "클립보드에 복사"}
             >
-              <span class="button-icon">📋</span>
-              복사
+              <span class="button-icon">{isCopying ? '⏳' : '📋'}</span>
+              {isCopying ? '복사 중...' : '복사'}
             </button>
             
             <button 
@@ -1993,6 +2077,26 @@
     background-color: #4b5563;
   }
 
+  /* Copying button state */
+  .toolbar-button.copying {
+    background-color: #059669 !important;
+    opacity: 0.8;
+    cursor: wait;
+  }
+
+  .toolbar-button.copying .button-icon {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   /* Note: Main responsive design styles are defined earlier with error panel adjustments */
   /*
   @media (max-width: 1024px) {
@@ -2340,5 +2444,38 @@
 
   :global([data-theme="dark"]) .json-editor-container textarea.error-highlight-active {
     box-shadow: 0 0 0 2px #ef4444, 0 0 0 4px rgba(239, 68, 68, 0.3);
+  }
+
+  /* Copy highlighting styles */
+  .json-editor-container textarea.copy-highlight {
+    animation: copyFlash 0.2s ease-out;
+    box-shadow: 0 0 0 2px #10b981, 0 0 0 4px rgba(16, 185, 129, 0.2);
+  }
+
+  .json-editor-container textarea.copy-highlight::selection {
+    background-color: #10b981;
+    color: white;
+  }
+
+  @keyframes copyFlash {
+    0% {
+      box-shadow: 0 0 0 2px #10b981, 0 0 0 4px rgba(16, 185, 129, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 0 4px #10b981, 0 0 0 8px rgba(16, 185, 129, 0.4);
+    }
+    100% {
+      box-shadow: 0 0 0 2px #10b981, 0 0 0 4px rgba(16, 185, 129, 0.2);
+    }
+  }
+
+  /* Dark mode copy highlighting */
+  :global([data-theme="dark"]) .json-editor-container textarea.copy-highlight {
+    box-shadow: 0 0 0 2px #34d399, 0 0 0 4px rgba(52, 211, 153, 0.3);
+  }
+
+  :global([data-theme="dark"]) .json-editor-container textarea.copy-highlight::selection {
+    background-color: #34d399;
+    color: #1f2937;
   }
 </style>
