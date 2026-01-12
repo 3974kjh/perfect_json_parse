@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import { parseJson } from '$lib/utils/json-parser';
   import { generateTree } from '$lib/utils/tree-generator';
   import type { ParseResult, TreeNode } from '$lib/types';
+
+  // 페이지 데이터 (SSR에서 전달됨)  
+  let { data }: { data?: any } = $props();
   
   // Toast 타입 정의
   interface Toast {
@@ -140,18 +144,18 @@
   
   // 실제 줄 높이 계산 함수
   function calculateLineHeight() {
-    if (textareaElement) {
-      const computedStyle = window.getComputedStyle(textareaElement);
-      actualLineHeight = parseFloat(computedStyle.lineHeight) || 21;
-      
-      // 줄번호의 높이도 동적으로 조정
-      if (lineNumbersElement) {
-        const lineNumbers = lineNumbersElement.querySelectorAll('.line-number');
-        lineNumbers.forEach((lineNumber: Element) => {
-          (lineNumber as HTMLElement).style.height = `${actualLineHeight}px`;
-          (lineNumber as HTMLElement).style.lineHeight = `${actualLineHeight}px`;
-        });
-      }
+    if (!browser || !textareaElement) return;
+    
+    const computedStyle = window.getComputedStyle(textareaElement);
+    actualLineHeight = parseFloat(computedStyle.lineHeight) || 21;
+    
+    // 줄번호의 높이도 동적으로 조정
+    if (lineNumbersElement) {
+      const lineNumbers = lineNumbersElement.querySelectorAll('.line-number');
+      lineNumbers.forEach((lineNumber: Element) => {
+        (lineNumber as HTMLElement).style.height = `${actualLineHeight}px`;
+        (lineNumber as HTMLElement).style.lineHeight = `${actualLineHeight}px`;
+      });
     }
   }
 
@@ -247,7 +251,7 @@
 
   // 텍스트 변경 시 하이라이트 업데이트
   $effect(() => {
-    if (textareaElement) {
+    if (browser && textareaElement) {
       highlightErrorLine();
     }
   });
@@ -311,6 +315,11 @@
   }
   
   function downloadJson() {
+    if (!browser) {
+      showToast('다운로드는 브라우저에서만 가능합니다.', 'warning');
+      return;
+    }
+    
     const blob = new Blob([jsonText], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -321,6 +330,11 @@
   }
   
   async function copyToClipboard() {
+    if (!browser) {
+      showToast('복사는 브라우저에서만 가능합니다.', 'warning');
+      return;
+    }
+    
     if (isCopying) return; // 중복 호출 방지
     
     isCopying = true;
@@ -382,6 +396,11 @@
   
   // Fallback 복사 함수 (구형 브라우저 지원)
   function fallbackCopyToClipboard(text: string) {
+    if (!browser) {
+      showToast('복사는 브라우저에서만 가능합니다.', 'warning');
+      return;
+    }
+    
     try {
       // 임시 텍스트 영역 생성
       const tempTextarea = document.createElement('textarea');
@@ -414,16 +433,16 @@
     }
     
     if (!jsonText.includes(replaceFrom)) {
-      showToast(`바꿀 문자 "${replaceFrom}"가 JSON 입력 문자열에 없습니다.`, 'error');
+      showToast(`[ ${replaceFrom} ] 문자가 JSON 입력 문자열에 없습니다.`, 'error');
       return;
     }
     
     jsonText = jsonText.replaceAll(replaceFrom, replaceTo);
     
     if (replaceTo.trim() === '') {
-      showToast(`"${replaceFrom}"를 삭제했습니다.`, 'success');
+      showToast(`[ ${replaceFrom} ] 문자를 삭제했습니다.`, 'success');
     } else {
-      showToast(`"${replaceFrom}"를 "${replaceTo}"로 변환했습니다.`, 'success');
+      showToast(`[ ${replaceFrom} ] 문자를 [ ${replaceTo} ] 문자로 변환했습니다.`, 'success');
     }
   }
   
@@ -455,10 +474,14 @@
   
   function toggleTheme() {
     isDarkMode = !isDarkMode;
-    document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+    if (browser) {
+      document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+    }
   }
   
   onMount(() => {
+    if (!browser) return;
+    
     // 저장된 설정 불러오기
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
@@ -478,7 +501,7 @@
   
   // 자동 저장
   $effect(() => {
-    if (jsonText) {
+    if (browser && jsonText) {
       localStorage.setItem('json-parser-last-content', jsonText);
       localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
       
@@ -489,8 +512,60 @@
 </script>
 
 <svelte:head>
-  <title>PJP - Perfect Json Parser</title>
-  <meta name="description" content="PJP는 JSON 파싱 오류를 정확하게 찾아주고 계층적 구조로 시각화해주는 도구입니다." />
+  <title>PJP - Perfect Json Parser | JSON 검증, 파싱, 시각화 도구</title>
+  <meta name="description" content="PJP는 JSON 파싱 오류를 정확하게 찾아주고 계층적 구조로 시각화해주는 무료 온라인 도구입니다. 실시간 JSON 검증, 포맷팅, 압축, 오류 분석, 트리 구조 시각화를 제공합니다." />
+  
+  <!-- SEO Meta Tags -->
+  <meta name="keywords" content="JSON parser, JSON validator, JSON formatter, JSON 검증, JSON 파싱, JSON 시각화, JSON 트리, JSON 오류 검사, Perfect JSON Parser, PJP" />
+  <meta name="author" content="PJP - Perfect JSON Parser" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://perfectjsonparser.com/" />
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="PJP - Perfect Json Parser | JSON 검증, 파싱, 시각화 도구" />
+  <meta property="og:description" content="JSON 파싱 오류를 정확하게 찾아주고 계층적 구조로 시각화해주는 무료 온라인 도구입니다. 실시간 JSON 검증, 포맷팅, 압축, 오류 분석을 제공합니다." />
+  <meta property="og:url" content="https://perfectjsonparser.com/" />
+  <meta property="og:site_name" content="Perfect JSON Parser" />
+  <meta property="og:locale" content="ko_KR" />
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="PJP - Perfect Json Parser | JSON 검증, 파싱, 시각화 도구" />
+  <meta name="twitter:description" content="JSON 파싱 오류를 정확하게 찾아주고 계층적 구조로 시각화해주는 무료 온라인 도구" />
+  
+  <!-- Mobile -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#3B82F6" />
+  
+  <!-- Preload critical resources -->
+  <link rel="preload" href="/fonts/ui-monospace.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+  
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Perfect JSON Parser (PJP)",
+      "description": "JSON 파싱 오류를 정확하게 찾아주고 계층적 구조로 시각화해주는 무료 온라인 도구",
+      "url": "https://perfectjsonparser.com/",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Any",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "실시간 JSON 검증",
+        "JSON 포맷팅 및 압축", 
+        "상세한 오류 분석 및 수정 가이드",
+        "트리 구조 시각화",
+        "문자 변환 기능",
+        "다크 모드 지원"
+      ]
+    }
+  </script>
 </svelte:head>
 
 <main class="h-screen bg-gray-50 flex flex-col" data-theme={isDarkMode ? 'dark' : 'light'}>
