@@ -27,8 +27,8 @@ export const load = async () => {
   };
 };
 
-// SSR 활성화
+// SSR 활성화 (크롤링 봇 감지 개선)
 export const ssr = true;
 
-// 정적 사이트 생성 활성화 (선택사항)
-export const prerender = true;
+// 정적 사이트 생성 비활성화 (Cloudflare에서 동적 렌더링 사용)
+export const prerender = false;

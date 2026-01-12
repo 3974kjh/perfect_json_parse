@@ -538,8 +538,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#3B82F6" />
   
-  <!-- Preload critical resources -->
-  <link rel="preload" href="/fonts/ui-monospace.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
   
   <!-- Structured Data -->
   <script type="application/ld+json">
